@@ -29,28 +29,30 @@
 
   <script>
     const appIds = ['6736709602', '1573430144', '6550912161'];
-
+  
     async function fetchAppData(appId) {
+      const proxy = 'https://api.allorigins.win/get?url=';
+      const url = `https://itunes.apple.com/lookup?id=${appId}`;
+  
       try {
-        const response = await fetch(`https://itunes.apple.com/lookup?id=${appId}`);
-
+        const response = await fetch(`${proxy}${encodeURIComponent(url)}`);
         if (!response.ok) {
-          throw new Error(`Network response was not ok for appId: ${appId}`);
+          throw new Error(`Network response failed for appId: ${appId}`);
         }
-
-        const data = await response.json();
-
+  
+        const proxyData = await response.json();
+        const data = JSON.parse(proxyData.contents);
+  
         if (data.results.length === 0) {
           throw new Error(`No results found for appId: ${appId}`);
         }
-
+  
         return data.results[0];
       } catch (error) {
         console.error(`Failed to fetch data for appId: ${appId}`, error);
-        return null;
       }
     }
-
+  
     function createAppCard(app) {
       const card = document.createElement('div');
       card.className = 'bg-white rounded-lg shadow hover:shadow-lg transition p-6 flex flex-col items-center';
@@ -62,30 +64,30 @@
       `;
       return card;
     }
-
+  
     async function loadApps() {
       const container = document.getElementById('apps');
       const loader = document.getElementById('loader');
-
+  
       try {
         const appPromises = appIds.map(fetchAppData);
         const apps = await Promise.all(appPromises);
-
+  
         apps.forEach(app => {
           if (app) {
             container.appendChild(createAppCard(app));
           }
         });
-      } catch (error) {
-        console.error('An error occurred while loading apps:', error);
-        loader.textContent = 'Failed to load apps. Please refresh the page.';
-        return;
+        
+        loader.classList.add('hidden');
+        container.classList.remove('hidden');
       }
-
-      loader.classList.add('hidden');
-      container.classList.remove('hidden');
+      catch (error) {
+        console.error('An error occurred while loading apps:', error);
+        loader.textContent = 'Failed to load apps.';
+      }
     }
-
+  
     document.addEventListener('DOMContentLoaded', loadApps);
   </script>
 </body>
