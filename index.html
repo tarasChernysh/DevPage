@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="google-site-verification" content="DEI7_Lo-K-S71HoPX1mijW6SZOj4WfZdJkAZFAIppDg" />
+  <meta name="description" content="Taras Chernysh - iOS Developer & App Creator. Explore my portfolio of iOS applications." />
   <title>Taras Chernysh | iOS Developer</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
@@ -29,65 +31,132 @@
 
   <script>
     const appIds = ['1573430144', '6550912161', '6749668065'];
-  
-    async function fetchAppData(appId) {
-      const proxy = 'https://api.allorigins.win/get?url=';
-      const url = `https://itunes.apple.com/lookup?id=${appId}`;
-  
-      try {
-        const response = await fetch(`${proxy}${encodeURIComponent(url)}`);
-        if (!response.ok) {
-          throw new Error(`Network response failed for appId: ${appId}`);
-        }
-  
-        const proxyData = await response.json();
-        const data = JSON.parse(proxyData.contents);
-  
-        if (data.results.length === 0) {
-          throw new Error(`No results found for appId: ${appId}`);
-        }
-  
-        return data.results[0];
-      } catch (error) {
-        console.error(`Failed to fetch data for appId: ${appId}`, error);
+
+    const appOverrides = {
+      '6550912161': {
+        url: 'https://taraschernysh.github.io/VolumeBoosterWeb/',
+        linkText: 'Learn More →'
       }
+    };
+
+    const CORS_PROXIES = [
+      {
+        name: 'allorigins',
+        buildUrl: (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+        parseResponse: async (r) => JSON.parse((await r.json()).contents)
+      },
+      {
+        name: 'corsproxy.io',
+        buildUrl: (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+        parseResponse: async (r) => await r.json()
+      },
+    ];
+
+    const FETCH_TIMEOUT_MS = 6000;
+
+    function fetchWithTimeout(url, timeoutMs) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      return fetch(url, { signal: controller.signal })
+        .finally(() => clearTimeout(timeoutId));
     }
-  
-    function createAppCard(app) {
+
+    async function fetchAppData(appId) {
+      const url = `https://itunes.apple.com/lookup?id=${appId}`;
+      const errors = [];
+
+      for (const proxy of CORS_PROXIES) {
+        try {
+          const proxyUrl = proxy.buildUrl(url);
+          const response = await fetchWithTimeout(proxyUrl, FETCH_TIMEOUT_MS);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} from ${proxy.name}`);
+          }
+
+          const data = await proxy.parseResponse(response);
+
+          if (!data.results || data.results.length === 0) {
+            throw new Error(`No results from ${proxy.name} for appId: ${appId}`);
+          }
+
+          return data.results[0];
+        } catch (error) {
+          const errorMsg = error.name === 'AbortError'
+            ? `Timeout (${FETCH_TIMEOUT_MS}ms) via ${proxy.name}`
+            : `${proxy.name}: ${error.message}`;
+          errors.push(errorMsg);
+          console.warn(`Proxy ${proxy.name} failed for appId ${appId}:`, errorMsg);
+        }
+      }
+
+      console.error(`All proxies failed for appId ${appId}:`, errors);
+      return undefined;
+    }
+
+    function createAppCard(app, appId) {
+      const override = appOverrides[appId];
+      const linkUrl = override ? override.url : app.trackViewUrl;
+      const linkText = override ? override.linkText : 'View on App Store →';
+
       const card = document.createElement('div');
       card.className = 'bg-white rounded-lg shadow hover:shadow-lg transition p-6 flex flex-col items-center';
       card.innerHTML = `
         <img src="${app.artworkUrl100}" alt="${app.trackName}" class="w-24 h-24 rounded-xl shadow mb-4">
         <h3 class="text-xl font-semibold text-center">${app.trackName}</h3>
         <p class="text-sm text-gray-600 mt-2 text-center">${app.description.substring(0, 100)}...</p>
-        <a href="${app.trackViewUrl}" target="_blank" class="mt-auto inline-block mt-4 text-indigo-600 hover:text-indigo-800">View on App Store →</a>
+        <a href="${linkUrl}" target="_blank" class="mt-auto inline-block mt-4 text-indigo-600 hover:text-indigo-800">${linkText}</a>
       `;
       return card;
     }
-  
+
+    function createErrorCard(appId) {
+      const override = appOverrides[appId];
+      const linkHtml = override
+        ? `<a href="${override.url}" target="_blank" class="mt-auto inline-block mt-4 text-indigo-600 hover:text-indigo-800">${override.linkText}</a>`
+        : `<a href="https://apps.apple.com/app/id${appId}" target="_blank" class="mt-auto inline-block mt-4 text-indigo-600 hover:text-indigo-800">View on App Store &rarr;</a>`;
+
+      const card = document.createElement('div');
+      card.className = 'bg-white rounded-lg shadow p-6 flex flex-col items-center opacity-60';
+      card.innerHTML = `
+        <div class="w-24 h-24 rounded-xl shadow mb-4 bg-gray-200 flex items-center justify-center">
+          <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold text-center text-gray-400">App Unavailable</h3>
+        <p class="text-sm text-gray-400 mt-2 text-center">Could not load app details. Try refreshing.</p>
+        ${linkHtml}
+      `;
+      return card;
+    }
+
     async function loadApps() {
       const container = document.getElementById('apps');
       const loader = document.getElementById('loader');
-  
+
       try {
-        const appPromises = appIds.map(fetchAppData);
-        const apps = await Promise.all(appPromises);
-  
-        apps.forEach(app => {
-          if (app) {
-            container.appendChild(createAppCard(app));
+        const results = await Promise.allSettled(
+          appIds.map(appId => fetchAppData(appId))
+        );
+
+        results.forEach((result, index) => {
+          const appId = appIds[index];
+          if (result.status === 'fulfilled' && result.value) {
+            container.appendChild(createAppCard(result.value, appId));
+          } else {
+            container.appendChild(createErrorCard(appId));
           }
         });
-        
+
         loader.classList.add('hidden');
         container.classList.remove('hidden');
-      }
-      catch (error) {
+      } catch (error) {
         console.error('An error occurred while loading apps:', error);
-        loader.textContent = 'Failed to load apps.';
+        loader.textContent = 'Failed to load apps. Please refresh the page.';
       }
     }
-  
+
     document.addEventListener('DOMContentLoaded', loadApps);
   </script>
 </body>
